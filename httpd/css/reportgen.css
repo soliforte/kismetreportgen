@@ -1,0 +1,25 @@
+#controlbar{
+    border: 1px solid black;
+    padding: 5px;
+  }
+  
+  #ssidsarea{
+    border: 1px dotted black;
+    height: 50px;
+    margin: 5px;
+  }
+  
+  .ssid{
+    margin: 5px;
+    border: 1px solid black;
+    display: inline-block;
+  }
+  
+  #removessid{
+    border: 1px solid black;
+    background-color: red;
+    width: 10px;
+    height: 10px;
+    display: inline-block;
+    margin: 5px;
+  }

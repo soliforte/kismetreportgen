@@ -1,0 +1,21 @@
+<html>
+    <head>
+    <link rel="stylesheet" type="text/css" href="/plugin/reportgen/css/reportgen.css">
+    <link rel="stylesheet" type="text/css" href="/plugin/reportgen/css/tabulator_midnight.min.css">
+    <script src="/js/jquery-3.1.0.min.js"></script>
+    <script src="/plugin/reportgen/js/jspdf.min.js"></script>
+    <script src="/plugin/reportgen/js/jspdf.plugin.autotable.min.js"></script>
+    <script src="/plugin/reportgen/js/tabulator.min.js"></script>
+    <script src="/plugin/reportgen/js/reportgen.js"></script>
+    </head>
+
+    <body>
+        <div id="controlbar">
+            <label for="addssid">SSID:</label><input id="addssid" type="text"><button id="addssidbutton">Add</button>
+            <button id="runreport">Run Report</button>
+            <button id="download-pdf">Download PDF</button><button id="download-csv">Download CSV</button>
+            <div id="ssidsarea"></div>
+            <div id="reportgen-table"></div>
+        </div>
+    </body>
+</html>
