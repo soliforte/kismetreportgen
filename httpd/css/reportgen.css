@@ -15,7 +15,7 @@
     display: inline-block;
   }
   
-  #removessid{
+  .removessid{
     border: 1px solid black;
     background-color: red;
     width: 10px;
