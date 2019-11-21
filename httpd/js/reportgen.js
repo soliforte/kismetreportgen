@@ -8,10 +8,11 @@
     typeof exports === "object" ? function (m) { module.exports = m(); } :
     function(m){ this.reportgen = m(); }
   )(function () {
-  
+
     "use strict";
-  
+
     var exports = {};
+    exports.load_complete = 0;
     $(document).ready(function(){
 
       var SSIDS = []
@@ -45,13 +46,32 @@
       $('#download-csv').click(function(){
         table.download("csv", "WiFi-Report.csv")
       })
-          
+
       $('#addssidbutton').on("click", function(){
-        var addssid = $('#addssid').val()
-        SSIDS.push(addssid)
-        $('#ssidsarea').append('<div id="ssid1" class="ssid">'+addssid+'<div id="removessid"></div></div>')
-        console.log(SSIDS)
+        var addssid = $('#addssid').val();
+        SSIDS.push(addssid);
+        buildSSIDList(SSIDS);
+        $('#addssid').val('');
       })
+
+      // remove SSIDS
+      $('body').on("click",".removessid", function(){
+        // get the value from the custom data attribute
+        var id = $(this).data('ssindex');
+        SSIDS.splice(id,1);
+        // update the list
+        buildSSIDList(SSIDS);
+      });
+
+      function buildSSIDList(SSIDS){
+        // clear the ssid label div and remove button
+        $('#ssidsarea div').remove();
+        $('#ssidsarea button').remove();
+        // rebuild the list based on the items of the SSIDS array
+        $.each(SSIDS, function(index, SSIDS){
+          $('#ssidsarea').append('<div class="ssid">'+SSIDS+'</div><button class="removessid" data-ssindex="'+index+'">X</button>');
+        });
+      }
 
       $('#runreport').on("click", function(){
           getBSSIDS();
@@ -115,5 +135,21 @@
 
   })
 
+// Add to the sidebar
+// Prevent "ReferenceError: kismet_ui_sidebar is not defined" on plugin/reportgen/index.html
+// What's a better way to do this?
+var len = $('script[src*="kismet.ui.sidebar.js"]').length;
+
+if(len>0){
+  kismet_ui_sidebar.AddSidebarItem({
+      id: 'sidebar_reportgenlink',
+      listTitle: '<i class="fa fa-gear" /> Report Gen',
+      clickCallback: function() {
+      window.open('/plugin/reportgen/', '_blank');
+      }
+  });
+}
+
+exports.load_complete = 1;
   return exports;
 });
