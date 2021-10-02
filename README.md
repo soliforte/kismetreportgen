@@ -9,7 +9,7 @@ In browser, navigate to http://localhost:2501/plugin/reportgen/
 
 The trailing '/' is very important.
 
-This tool generates a report for a specific SSID. Enter and SSID, press the "add" button, and then select "run report".
+This tool generates a report for a specific SSID. Enter an SSID, press the "add" button, and then select "run report".
 
 The tool will then query kismet and build a sortable table that groups clients based on: SSID > BSSID.
 
