@@ -7,6 +7,27 @@ and every client Kismet has seen associated with each of those access points.
 The report is shown as a sortable table grouped by SSID > BSSID and can be
 downloaded as CSV or PDF.
 
+## Features
+
+* **SSID picker** - a drop-down of every SSID Kismet has seen advertised, or
+  type any SSID; several can be reported at once.
+* **Related networks** - other SSIDs of the same installation are found
+  automatically from access points that share a radio or share clients,
+  including hidden SSIDs, with a **Found via** column explaining each one.
+* **Time window** - restrict the report to devices seen in the last 15
+  minutes, hour, 6 hours or 24 hours, judged by Kismet's clock.
+* **Client details** - per client: name, manufacturer, type, encryption,
+  channel, frequency, signal, first/last seen, plus DHCP hostname, IP
+  address, EAP identity, probed SSIDs and DHCP vendor where Kismet has them.
+* **Exports** - CSV (all columns, ISO timestamps) and a landscape PDF whose
+  header records the SSIDs, time window and related-network setting.
+* **Kismet integration** - a **Wi-Fi Report** entry in the sidebar menu and a
+  **Wi-Fi Report** panel in every Wi-Fi access point's details window that
+  opens a report for that access point's SSID; the page follows Kismet's
+  light/dark theme and login session.
+* **Settings are remembered** - the time window and related-network choice
+  persist in the browser.
+
 ## Requirements
 
 * A current Kismet release (tested with 2025.09).  The plugin uses the
@@ -35,6 +56,18 @@ plugin again.
 
 If Kismet's `pkg-config` file is not on your system the Makefile falls back to
 `/usr/local/lib/kismet`; override with `make install plugindir=/path/to/plugins`.
+
+Notes:
+
+* `make install` only forces root ownership of the files when Kismet's own
+  `Makefile.inc` is available (`KIS_SRC_DIR`); into a user-writable plugin
+  directory such as a Homebrew prefix it works without `sudo`.
+* Kismet looks for per-user plugins in the home directory of the user it
+  *runs as*.  If you start it with `sudo kismet`, that is root's home
+  (`/var/root/.kismet/plugins/` on macOS), not yours, so use `make install`
+  in that case.
+* Kismet logs `Plugin 'reportgen' loaded...` at startup when the plugin is
+  found, and `/plugin/reportgen/` returns 404 until it has been restarted.
 
 ## Usage
 
@@ -89,6 +122,20 @@ report for such an SSID legitimately includes all of those private networks.
 
 Reports for networks with many access points and clients can take a little
 while; the status line shows progress.
+
+### Good to know
+
+* **Hostname / IP / Identity** are only known to Kismet when it decoded the
+  client's traffic: open networks, or WPA networks whose key is configured
+  in Kismet.  On encrypted networks those columns stay empty; **Probed
+  SSIDs** and the rest are available regardless.
+* **Time window** uses Kismet's clock (`/system/timestamp.json`), not the
+  browser's, so it stays correct when the two disagree.
+* **Background tabs** - browsers pause rendering in hidden tabs, so a report
+  started in a background tab fills the table as soon as the tab is shown.
+  The data is complete; the CSV and PDF exports do not depend on rendering.
+* A client that roamed between several BSSIDs is listed under each of them;
+  the **Found via** entry "Shared client" names such clients.
 
 ## How it works
 
