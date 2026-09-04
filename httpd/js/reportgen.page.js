@@ -60,9 +60,12 @@
 
     const CLIENT_FIELDS = COMMON_FIELDS.concat([
         ["dot11.device/dot11.device.last_bssid", "last_bssid"],
-        // Every BSSID this client has associated with; used to link access
-        // points that share clients.
+        // Every BSSID this client has associated with, with per-association
+        // DHCP / IP / EAP details; also used to link access points that
+        // share clients.
         "dot11.device/dot11.device.client_map",
+        // SSIDs this client has probed for.
+        "dot11.device/dot11.device.probed_ssid_map",
     ]);
 
     // Lightweight record for every access point Kismet knows, used to find
@@ -77,6 +80,16 @@
 
     const CLIENT_MAP_KEY = "dot11.device.client_map";
     const CLIENT_BSSID_KEY = "dot11.client.bssid_key";
+    const PROBED_MAP_KEY = "dot11.device.probed_ssid_map";
+
+    // Time window choices (seconds; 0 = no limit), matching #time-window.
+    const TIME_WINDOWS = {
+        "0": "any time",
+        "900": "the last 15 minutes",
+        "3600": "the last hour",
+        "21600": "the last 6 hours",
+        "86400": "the last 24 hours",
+    };
 
     const ADVERTISED_SSID_PATH =
         "dot11.device/dot11.device.advertised_ssid_map/dot11.advertisedssid.ssid";
@@ -190,22 +203,42 @@
         return $("#include-related").checked;
     }
 
-    function rememberIncludeRelated() {
+    // Selected time window in seconds; 0 means no limit.
+    function timeWindow() {
+        const v = Number($("#time-window").value);
+        return Number.isFinite(v) && v > 0 ? v : 0;
+    }
+
+    function timeWindowLabel() {
+        return TIME_WINDOWS[String(timeWindow())] || "any time";
+    }
+
+    // Settings are remembered in the browser through Kismet's storage helper.
+    function rememberSetting(key, value) {
         try {
             if (typeof Storages !== "undefined")
-                Storages.localStorage.set("reportgen.include_related", includeRelated());
+                Storages.localStorage.set(key, value);
         } catch (e) {
             // Storage unavailable - not persisted.
         }
     }
 
-    function restoreIncludeRelated() {
+    function recallSetting(key, fallback) {
         try {
-            if (typeof Storages !== "undefined" && Storages.localStorage.isSet("reportgen.include_related"))
-                $("#include-related").checked = Boolean(Storages.localStorage.get("reportgen.include_related"));
+            if (typeof Storages !== "undefined" && Storages.localStorage.isSet(key))
+                return Storages.localStorage.get(key);
         } catch (e) {
             // Keep the default.
         }
+        return fallback;
+    }
+
+    function restoreSettings() {
+        $("#include-related").checked = Boolean(recallSetting("reportgen.include_related", true));
+
+        const win = String(recallSetting("reportgen.time_window", "0"));
+        if (win in TIME_WINDOWS)
+            $("#time-window").value = win;
     }
 
     // ------------------------------------------------------------- session
@@ -382,10 +415,30 @@
         }, extra);
     }
 
+    // Access point view, restricted server-side to the selected time window.
+    function accessPointViewPath() {
+        const win = timeWindow();
+        return "devices/views/phydot11_accesspoints/" +
+            (win > 0 ? `last-time/-${win}/` : "") + "devices.json";
+    }
+
+    // Kismet's clock, so client activity is judged against the server's
+    // idea of "now" rather than the browser's.
+    async function serverTime() {
+        const resp = await fetch(KISMET + "system/timestamp.json", { credentials: "same-origin" });
+        if (resp.status === 401)
+            throw new AuthError();
+        if (!resp.ok)
+            return Math.floor(Date.now() / 1000);
+        const data = await resp.json();
+        const sec = Number(data["kismet.system.timestamp.sec"]);
+        return sec > 0 ? sec : Math.floor(Date.now() / 1000);
+    }
+
     async function fetchAccessPoints(wanted) {
         const alternatives = Array.from(wanted).map(escapeRegex).join("|");
 
-        const aps = await kismetPost("devices/views/phydot11_accesspoints/devices.json", {
+        const aps = await kismetPost(accessPointViewPath(), {
             fields: AP_FIELDS,
             regex: [[ADVERTISED_SSID_PATH, `^(?:${alternatives})$`]],
         });
@@ -422,7 +475,7 @@
     // same for all of them.  Access points whose clock starts fall within
     // BSS_CLOCK_WINDOW_USEC of each other are treated as one radio.
     async function loadAccessPointIndex() {
-        const list = await kismetPost("devices/views/phydot11_accesspoints/devices.json", {
+        const list = await kismetPost(accessPointViewPath(), {
             fields: AP_INDEX_FIELDS,
         });
 
@@ -466,6 +519,63 @@
         };
     }
 
+    // The client's association record for a given BSSID (Kismet keys the map
+    // by BSSID, or serializes it as an array), or null.
+    function associationRecord(client, bssid) {
+        const cmap = client[CLIENT_MAP_KEY];
+        if (!isObject(cmap))
+            return null;
+
+        if (!Array.isArray(cmap) && isObject(cmap[bssid]))
+            return cmap[bssid];
+
+        for (const rec of Object.values(cmap)) {
+            if (isObject(rec) && rec["dot11.client.bssid"] === bssid)
+                return rec;
+        }
+        return null;
+    }
+
+    function probedSsids(client) {
+        const pmap = client[PROBED_MAP_KEY];
+        if (!isObject(pmap))
+            return [];
+
+        const out = new Set();
+        for (const rec of Object.values(pmap)) {
+            const ssid = isObject(rec) ? rec["dot11.probedssid.ssid"] : undefined;
+            if (typeof ssid === "string" && ssid.length > 0)
+                out.add(ssid);
+        }
+        return Array.from(out).sort((a, b) => a.localeCompare(b));
+    }
+
+    // Hostname, IP address and EAP identity Kismet learned for this client on
+    // this BSSID.  These only exist when Kismet saw decrypted traffic.
+    function clientDetails(client, bssid) {
+        const rec = associationRecord(client, bssid);
+        const details = { hostname: "", ip: "", identity: "", dhcp_vendor: "" };
+
+        if (rec === null)
+            return details;
+
+        if (typeof rec["dot11.client.dhcp_host"] === "string")
+            details.hostname = rec["dot11.client.dhcp_host"];
+        if (typeof rec["dot11.client.dhcp_vendor"] === "string")
+            details.dhcp_vendor = rec["dot11.client.dhcp_vendor"];
+        if (typeof rec["dot11.client.eap_identity"] === "string")
+            details.identity = rec["dot11.client.eap_identity"];
+
+        const ip = rec["dot11.client.ipdata"];
+        if (isObject(ip)) {
+            const addr = ip["kismet.common.ipdata.address"];
+            if (typeof addr === "string" && addr !== "" && addr !== "0.0.0.0")
+                details.ip = addr;
+        }
+
+        return details;
+    }
+
     function apLabel(entry) {
         return `${entry.ssid} (${entry.mac})`;
     }
@@ -479,15 +589,19 @@
 
         const wanted = new Set(ssids);
         const related = includeRelated();
+        const win = timeWindow();
 
         try {
             setStatus("Querying access points…");
+            // Clients seen before this are left out; APs are filtered by the
+            // server through the last-time view.
+            const cutoff = win > 0 ? (await serverTime()) - win : 0;
             const seed = await fetchAccessPoints(wanted);
 
             if (seed.length === 0) {
                 table.setData([]);
                 showRelatedInfo([]);
-                setStatus("No access points found advertising the selected SSID(s).", "warn");
+                setStatus(`No access points advertising the selected SSID(s) seen ${timeWindowLabel()}.`, "warn");
                 return;
             }
 
@@ -539,7 +653,8 @@
                 await mapLimit(batch, CLIENT_FETCH_CONCURRENCY, async (key) => {
                     const entry = aps.get(key);
                     try {
-                        entry.clients = await fetchClients(entry);
+                        entry.clients = (await fetchClients(entry))
+                            .filter((c) => cutoff === 0 || Number(c.last_time) >= cutoff);
                     } catch (e) {
                         if (e instanceof AuthError) throw e;
                         console.error(`reportgen: failed to fetch clients of ${entry.mac}`, e);
@@ -603,15 +718,26 @@
                     role: "AP",
                     clients: Number(entry.dev.num_clients) || 0,
                     via: entry.via,
+                    hostname: "",
+                    ip: "",
+                    identity: "",
+                    dhcp_vendor: "",
+                    probed: "",
                 }));
 
                 for (const client of entry.clients) {
+                    const details = clientDetails(client, entry.mac);
                     rows.push(deviceRow(client, {
                         ssid: entry.ssid,
                         bssid: entry.mac,
                         role: "Client",
                         clients: null,
                         via: "",
+                        hostname: details.hostname,
+                        ip: details.ip,
+                        identity: details.identity,
+                        dhcp_vendor: details.dhcp_vendor,
+                        probed: probedSsids(client).join(", "),
                     }));
                 }
 
@@ -624,7 +750,7 @@
             const apSummary = relatedCount > 0
                 ? `${aps.size} access point(s) (${aps.size - relatedCount} requested, ${relatedCount} related)`
                 : `${aps.size} access point(s)`;
-            setStatus(`Report complete: ${apSummary}, ${clientTotal} client(s).`, "ok");
+            setStatus(`Report complete: ${apSummary}, ${clientTotal} client(s) seen ${timeWindowLabel()}.`, "ok");
         } catch (e) {
             console.error("reportgen: report failed", e);
             if (e instanceof AuthError)
@@ -675,6 +801,9 @@
         { title: "Role", field: "role", width: 80 },
         { title: "MAC", field: "mac", width: 150 },
         { title: "Name", field: "name", minWidth: 120 },
+        { title: "Hostname", field: "hostname", minWidth: 110, tooltip: true },
+        { title: "IP", field: "ip", width: 120 },
+        { title: "Identity", field: "identity", minWidth: 110, tooltip: true },
         { title: "Manufacturer", field: "manuf", minWidth: 120 },
         { title: "Type", field: "type", minWidth: 100 },
         { title: "Encryption", field: "crypt", minWidth: 140 },
@@ -685,7 +814,9 @@
         { title: "Signal", field: "signal", hozAlign: "right", width: 90,
             formatter: (cell) => formatSignal(cell.getValue()),
             accessorDownload: (value) => (value ? value : "") },
+        { title: "Probed SSIDs", field: "probed", minWidth: 150, tooltip: true },
         { title: "Found via", field: "via", minWidth: 200 },
+        { title: "DHCP vendor", field: "dhcp_vendor", visible: false, download: true },
         { title: "Clients", field: "clients", hozAlign: "right", width: 80,
             formatter: (cell) => (cell.getValue() === null ? "" : cell.getValue()),
             accessorDownload: (value) => (value === null ? "" : value) },
@@ -703,6 +834,9 @@
             // (virtual DOM) instead of growing the page.
             height: "100%",
             layout: "fitColumns",
+            // Exports flatten the groups into plain rows (the SSID and BSSID
+            // columns carry that information), so tell Tabulator not to warn.
+            downloadConfig: { rowGroups: false },
             placeholder: "Add one or more SSIDs and run the report.",
             groupBy: ["ssid", "bssid"],
             groupStartOpen: true,
@@ -757,6 +891,11 @@
             frequency: formatFrequency(r.frequency),
             signal: formatSignal(r.signal),
             via: r.via,
+            hostname: r.hostname,
+            ip: r.ip,
+            identity: r.identity,
+            dhcp_vendor: r.dhcp_vendor,
+            probed: r.probed,
             clients: r.clients === null ? "" : String(r.clients),
             first_time: formatTime(r.first_time),
             last_time: formatTime(r.last_time),
@@ -784,11 +923,14 @@
         doc.text("Kismet Wi-Fi report", 40, 40);
         doc.setFontSize(9);
         doc.text(`SSIDs: ${ssids.join(", ")}`, 40, 56);
-        doc.text(`Generated: ${new Date().toLocaleString()}`, 40, 68);
+        doc.text(`Generated: ${new Date().toLocaleString()}  |  Devices seen ${timeWindowLabel()}  |  ` +
+            `Related networks ${includeRelated() ? "included" : "excluded"}`, 40, 68);
+
+        const pdfColumns = COLUMNS.filter((c) => c.field !== "dhcp_vendor");
 
         doc.autoTable({
-            head: [COLUMNS.map((c) => c.title)],
-            body: rows.map((r) => COLUMNS.map((c) => r[c.field])),
+            head: [pdfColumns.map((c) => c.title)],
+            body: rows.map((r) => pdfColumns.map((c) => r[c.field])),
             startY: 80,
             margin: { left: 40, right: 40 },
             styles: { fontSize: 7, overflow: "linebreak", cellPadding: 2 },
@@ -841,8 +983,11 @@
         $("#run-report").addEventListener("click", runReport);
         $("#download-csv").addEventListener("click", downloadCsv);
         $("#download-pdf").addEventListener("click", downloadPdf);
-        restoreIncludeRelated();
-        $("#include-related").addEventListener("change", rememberIncludeRelated);
+        restoreSettings();
+        $("#include-related").addEventListener("change", () =>
+            rememberSetting("reportgen.include_related", includeRelated()));
+        $("#time-window").addEventListener("change", () =>
+            rememberSetting("reportgen.time_window", String(timeWindow())));
         $("#refresh-ssids").addEventListener("click", () => {
             loadKnownSsids().catch(handleInitError);
         });
