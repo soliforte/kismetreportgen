@@ -58,6 +58,15 @@ html, body {
     margin: 6px 0;
 }
 
+select {
+    padding: 4px 6px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg);
+    color: var(--fg);
+    margin-right: 12px;
+}
+
 input[type="text"] {
     padding: 5px 8px;
     min-width: 18em;

@@ -49,8 +49,20 @@ first if it reports that you are not logged in.
 
 1. Type an SSID, or pick one from the drop-down of SSIDs Kismet has seen
    advertised, and press **Add**.  Repeat for as many SSIDs as you like.
-2. Press **Run Report**.
-3. Use **Download CSV** / **Download PDF** to export the table.
+2. Optionally limit **Seen within** to devices active in the last 15 minutes,
+   hour, 6 hours or 24 hours (judged by Kismet's clock), so a long-running
+   Kismet does not report every client it has ever seen.
+3. Press **Run Report**.
+4. Use **Download CSV** / **Download PDF** to export the table.
+
+The report also appears as a **Wi-Fi Report** panel in the device details
+window of any Wi-Fi access point in the main Kismet UI, with a link that opens
+a report for the SSID that access point beacons.
+
+Client rows include what Kismet has learned about each client on that
+BSSID: DHCP hostname, IP address and EAP identity (only present when Kismet
+saw decrypted traffic, i.e. open networks or networks whose key it has), the
+SSIDs the client has probed for, and the DHCP vendor string in the CSV.
 
 SSIDs can also be pre-filled through the URL, e.g.
 `/plugin/reportgen/?ssid=MyNetwork&ssid=GuestNetwork`.
@@ -80,7 +92,8 @@ while; the status line shows progress.
 
 ## How it works
 
-1. `POST /devices/views/phydot11_accesspoints/devices.json` with a regex on
+1. `POST /devices/views/phydot11_accesspoints/devices.json` (or its
+   `last-time/-N/` variant when a time window is set) with a regex on
    `dot11.device.advertised_ssid_map` to find the access points advertising
    the selected SSIDs, requesting only the fields the report needs.
 2. `POST /phy/phy80211/clients-of/[KEY]/clients.json` for each access point
@@ -99,7 +112,7 @@ while; the status line shows progress.
 * `manifest.conf` - Kismet plugin manifest; registers `httpd/js/reportgen.js`
   as a web UI module.
 * `httpd/js/reportgen.js` - loaded by the main Kismet UI; adds the sidebar
-  entry.
+  entry and the device-details panel.
 * `httpd/index.html`, `httpd/js/reportgen.page.js`, `httpd/css/reportgen.css`
   - the report page.  It uses Kismet's bundled Tabulator library and follows
   the light/dark theme chosen in the Kismet UI.

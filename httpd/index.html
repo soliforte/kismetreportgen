@@ -42,6 +42,14 @@
         <div id="ssid-chips" class="row"></div>
 
         <div class="row">
+            <label for="time-window">Seen within:</label>
+            <select id="time-window">
+                <option value="0">any time</option>
+                <option value="900">last 15 minutes</option>
+                <option value="3600">last hour</option>
+                <option value="21600">last 6 hours</option>
+                <option value="86400">last 24 hours</option>
+            </select>
             <label class="checkbox" title="Also report networks that share a radio with a selected SSID (near-identical BSS clocks) or share clients with it. Repeats until nothing new is found.">
                 <input id="include-related" type="checkbox" checked>
                 Include related networks (same radio or shared clients)
