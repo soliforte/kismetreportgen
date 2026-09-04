@@ -1,23 +1,65 @@
 <!doctype html>
-<html>
-    <head>
-    <link rel="stylesheet" type="text/css" href="/plugin/reportgen/css/reportgen.css">
-    <link rel="stylesheet" type="text/css" href="/plugin/reportgen/css/tabulator_midnight.min.css">
-    <script src="/js/jquery-3.1.0.min.js"></script>
-    <script src="/plugin/reportgen/js/jspdf.min.js"></script>
-    <script src="/plugin/reportgen/js/jspdf.plugin.autotable.min.js"></script>
-    <script src="/plugin/reportgen/js/tabulator.min.js"></script>
-    <script src="/plugin/reportgen/js/reportgen.js"></script>
-    <meta charset="utf-8" />
-    </head>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kismet - Wi-Fi Report</title>
 
-    <body>
-        <div id="controlbar">
-            <label for="addssid">SSID:</label><input id="addssid" type="text"><button id="addssidbutton">Add</button>
-            <button id="runreport">Run Report</button>
-            <button id="download-pdf">Download PDF</button><button id="download-csv">Download CSV</button>
-            <div id="ssidsarea"></div>
-            <div id="reportgen-table"></div>
+    <!-- This page is served from /plugin/reportgen/, so Kismet's own resources
+         are two levels up.  Relative paths keep it working behind a reverse
+         proxy prefix. -->
+    <script src="../../js/js.storage.min.js"></script>
+    <script src="../../js/tabulator.min.js"></script>
+
+    <!-- Bundled with the plugin -->
+    <script src="js/jspdf.umd.min.js"></script>
+    <script src="js/jspdf.plugin.autotable.min.js"></script>
+    <script src="js/reportgen.page.js"></script>
+
+    <link rel="stylesheet" type="text/css" href="css/reportgen.css">
+</head>
+
+<body>
+    <header id="controlbar">
+        <h1>Kismet Wi-Fi Report</h1>
+
+        <div id="login-notice" class="notice error" hidden>
+            You are not logged in to Kismet.
+            <a href="../../" target="_blank" rel="noopener">Open the Kismet UI</a>,
+            log in, then reload this page.
         </div>
-    </body>
+
+        <div class="row">
+            <label for="ssid-input">SSID:</label>
+            <input id="ssid-input" type="text" list="ssid-list" autocomplete="off"
+                   placeholder="Type or pick an SSID">
+            <datalist id="ssid-list"></datalist>
+            <button id="add-ssid" type="button">Add</button>
+            <span id="ssid-count" class="hint"></span>
+            <button id="refresh-ssids" type="button" class="link" title="Reload the list of SSIDs Kismet has seen">Refresh list</button>
+        </div>
+
+        <div id="ssid-chips" class="row"></div>
+
+        <div class="row">
+            <label class="checkbox" title="Also report networks that share a radio with a selected SSID (near-identical BSS clocks) or share clients with it. Repeats until nothing new is found.">
+                <input id="include-related" type="checkbox" checked>
+                Include related networks (same radio or shared clients)
+            </label>
+        </div>
+
+        <div id="related-info" class="hint" hidden></div>
+
+        <div class="row">
+            <button id="run-report" type="button" class="primary" disabled>Run Report</button>
+            <button id="download-csv" type="button">Download CSV</button>
+            <button id="download-pdf" type="button">Download PDF</button>
+            <span id="status"></span>
+        </div>
+    </header>
+
+    <main>
+        <div id="report-table"></div>
+    </main>
+</body>
 </html>
